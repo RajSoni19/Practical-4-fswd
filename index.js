@@ -1,191 +1,150 @@
 //Task 1 
-console.log("hello") 
-const fs = require('fs'); 
-const path = require('path'); 
- 
-// Function to organize files in a directory on a small scale 
-function organizeDirectory(dirPath) { 
-  try { 
-    // Check if the directory exists 
-    if (!fs.existsSync(dirPath)) { 
-      throw new Error(`Directory not found: ${dirPath}`); 
-    } 
- 
-    // Define basic categories 
-    const categories = { 
-      Images: ['.jpg', '.jpeg', '.png'], 
-      Documents: ['.pdf', '.txt'], 
-      Others: [] 
-    }; 
- 
-    // Helper to determine category 
-    const getCategory = (extension) => { 
-      for (const [category, extensions] of Object.entries(categories)) { 
-        if (extensions.includes(extension.toLowerCase())) { 
-          return category; 
-        } 
-      } 
-      return 'Others'; 
-    }; 
- 
-    // Read the directory contents 
-    const files = fs.readdirSync(dirPath); 
- 
-    files.forEach((file) => { 
-      const filePath = path.join(dirPath, file); 
- 
-      if (fs.statSync(filePath).isFile()) { 
-        const fileExtension = path.extname(file); 
-        const category = getCategory(fileExtension); 
-        const categoryDir = path.join(dirPath, category); 
- 
-        // Create category folder if it doesn’t exist 
-        if (!fs.existsSync(categoryDir)) { 
-          fs.mkdirSync(categoryDir); 
-        } 
- 
-        // Move file to category folder 
-        const newFilePath = path.join(categoryDir, file); 
-        fs.renameSync(filePath, newFilePath); 
-        console.log(`Moved: ${file} -> ${category}/`); 
-      } 
-    }); 
- 
-    console.log('Directory organized successfully.'); 
-  } catch (error) { 
-    console.error('Error:', error.message); 
-  } 
-} 
- 
-// Get directory path from command-line arguments 
-const dirPath = process.argv[2]; 
- 
-if (!dirPath) { 
-  console.error('Please provide a directory path to organize.'); 
-  process.exit(1); 
-} 
- 
-organizeDirectory(path.resolve(dirPath));
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
 
-const fs = require('fs'); 
-const path = require('path'); 
- 
-// Function to copy a file from source to backup 
-function copyFile(srcPath, destPath) { 
-  return new Promise((resolve, reject) => { 
-    const readStream = fs.createReadStream(srcPath); 
-    const writeStream = fs.createWriteStream(destPath); 
-    readStream.pipe(writeStream); 
- 
-    readStream.on('end', resolve); 
-    readStream.on('error', reject); 
-  }); 
-} 
- 
-// Function to back up files from source to backup folder 
-async function backupFiles(srcDir, backupDir) { 
-  try { 
-    // Ensure the backup folder exists 
-    if (!fs.existsSync(backupDir)) { 
-      fs.mkdirSync(backupDir); 
-    } 
- 
-    const logStream = fs.createWriteStream(path.join(backupDir, 
-'backup-log.txt'), { flags: 'a' }); 
- 
-    // Function to log details 
-    const logDetails = (file, size, timestamp) => { 
-      logStream.write(`File: ${file}\nSize: ${size} bytes\nTimestamp: 
-${timestamp}\n\n`); 
-    }; 
- 
-    // Read the source directory 
-    const files = fs.readdirSync(srcDir); 
- 
-    for (const file of files) { 
-      const srcFilePath = path.join(srcDir, file); 
-      const destFilePath = path.join(backupDir, file); 
- 
-      const stats = fs.statSync(srcFilePath); 
- 
-      if (stats.isFile()) { 
-        // Copy the file to the backup directory 
-        await copyFile(srcFilePath, destFilePath); 
- 
-        // Log the file details 
-        const timestamp = new Date().toISOString(); 
-        logDetails(file, stats.size, timestamp); 
-        console.log(`Backed up: ${file}`); 
-      } 
-    } 
- 
-    console.log('Backup operation completed.'); 
-    logStream.end(); 
- 
-  } catch (error) { 
-    console.error('Error during backup:', error.message); 
-  } 
-} 
- 
-// Main function to run the backup 
-async function main() { 
-  const srcDir = process.argv[2];  // Source directory from command-line 
-argument 
-  const backupDir = process.argv[3] || './backup';  // Backup directory, 
-default is './backup' 
- 
-  if (!srcDir) { 
-    console.error('Please provide a source directory.'); 
-    process.exit(1); 
-  } 
- 
-  // Start the backup process 
-  await backupFiles(srcDir, backupDir); 
-} 
- 
-// Run the main function 
-main(); 
- 
+// Path to the JSON file for storing user data
+const dataFilePath = path.join(__dirname, "users.json");
+
+// Initialize the JSON file if it doesn't exist
+if (!fs.existsSync(dataFilePath)) {
+  fs.writeFileSync(dataFilePath, JSON.stringify([]), "utf8");
+}
+
+// Helper function to read users from the file
+const readUsers = () => {
+  const data = fs.readFileSync(dataFilePath, "utf8");
+  return JSON.parse(data);
+};
+
+// Helper function to write users to the file
+const writeUsers = (users) => {
+  fs.writeFileSync(dataFilePath, JSON.stringify(users, null, 2), "utf8");
+};
+
+// Create HTTP server
+const server = http.createServer((req, res) => {
+  const urlParts = req.url.split("/");
+  const method = req.method;
+
+  // Handle GET /users
+  if (method === "GET" && req.url === "/users") {
+    const users = readUsers();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(users));
+  }
+
+  // Handle POST /users
+  else if (method === "POST" && req.url === "/users") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const newUser = JSON.parse(body);
+        if (!newUser.id || !newUser.name) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ error: "Invalid user data" }));
+        }
+
+        const users = readUsers();
+        users.push(newUser);
+        writeUsers(users);
+
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "User added successfully" }));
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid JSON format" }));
+      }
+    });
+  }
+
+  // Handle DELETE /users/:id
+  else if (method === "DELETE" && urlParts[1] === "users" && urlParts[2]) {
+    const userId = urlParts[2];
+    const users = readUsers();
+    const filteredUsers = users.filter((user) => user.id !== userId);
+
+    if (filteredUsers.length === users.length) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "User not found" }));
+    }
+
+    writeUsers(filteredUsers);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ message: "User deleted successfully" }));
+  }
+
+  // Handle unsupported routes
+  else {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Route not found" }));
+  }
+});
+
+// Start the server
+const PORT = 3000;
+server.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
 
 //Task 2
-const os = require('os'); 
-const fs = require('fs'); 
-const path = require('path'); 
- 
-// Function to gather basic system info 
-function getSystemInfo() { 
-  return { 
-    homeDirectory: os.homedir(), 
-    hostname: os.hostname(), 
-    networkInterfaces: os.networkInterfaces(), 
-    environmentVariables: process.env 
-  }; 
-} 
- 
-// Function to save environment variables to a file 
-function saveEnvDetails(info) { 
-  const filePath = path.join(__dirname, 'env-details.json'); 
- 
-  try { 
-    fs.writeFileSync(filePath, JSON.stringify(info, null, 2)); // Pretty 
-print JSON 
-    console.log(`Environment details saved to ${filePath}`); 
-  } catch (error) { 
-    console.error('Error writing to file:', error.message); 
-  } 
-} 
- 
-// Function to display system info on the console 
-function displaySystemInfo() { 
-  const info = getSystemInfo(); 
-  console.log('Home Directory:', info.homeDirectory); 
-  console.log('Hostname:', info.hostname); 
-console.log('Network Interfaces:', 
-JSON.stringify(info.networkInterfaces, null, 2)); 
-console.log('Environment Variables:', 
-JSON.stringify(info.environmentVariables, null, 2)); 
-} 
-// Main function to run the program 
-function main() { 
-displaySystemInfo(); 
-saveEnvDetails(getSystemInfo());
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const usersFile = path.join(__dirname, 'users.json');
+function getUsers() {
+    if (!fs.existsSync(usersFile)) {
+        fs.writeFileSync(usersFile, '[]');
+    }
+    const data = fs.readFileSync(usersFile, 'utf8');
+    return JSON.parse(data);
+}
+
+function saveUsers(users) {
+    fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+}
+const server = http.createServer((req, res) => {
+    const method = req.method;
+    const url = req.url;
+
+    if (url === '/users' && method === 'GET') {
+        const users = getUsers();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(users));
+    } else if (url === '/users' && method === 'POST') {
+        let body = '';
+        req.on('data', (chunk) => {
+            body += chunk;
+        });
+        req.on('end', () => {
+            const newUser = JSON.parse(body);
+            const users = getUsers();
+            newUser.id = Date.now();
+            users.push(newUser);
+            saveUsers(users);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(newUser));
+        });
+    } else if (url.startsWith('/users/') && method === 'DELETE') {
+        const id = parseInt(url.split('/')[2]);
+        const users = getUsers();
+        const newUsers = users.filter((user) => user.id !== id);
+
+        if (users.length === newUsers.length) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'User not found' }));
+        } else {
+            saveUsers(newUsers);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: 'User deleted successfully' }));
+        }
+    } else {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Route not found' }));
+    }
+});
+const PORT = 3000;
+server.listen(PORT, () => {
+    console.log(`http://localhost:${PORT}`);
+});
